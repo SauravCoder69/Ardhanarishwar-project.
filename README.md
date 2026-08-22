@@ -2,6 +2,25 @@
 
 An all-in-one AI assistant for candidate career development, recruitment workflows, business intelligence, and role-aware knowledge retrieval.
 
+
+
+## Live Demo & Local Execution
+
+**Live Demo:** https://ardhanarishwar-project.onrender.com/
+
+The live deployment is provided for quickly reviewing the application's interface and core workflow.
+
+For the complete AI experience, local execution is recommended because the project uses **Ollama for local LLM inference** and **Qdrant for RAG/vector search**.
+
+The local setup enables the complete functionality, including AI responses, RAG-based knowledge retrieval, document processing, and voice assistance.
+
+This architecture was intentionally designed around local and privacy-focused AI components rather than depending entirely on paid cloud AI APIs.
+
+Therefore, evaluators can use the live link for a quick demonstration and run the project locally for complete feature verification.
+
+
+
+
 ## Project Overview
 
 Ardhanarishwar is a Python and Streamlit application with Candidate, Business, and Admin roles. It combines career tools, resume analysis, interview practice, recruitment utilities, conversational assistance, voice input/output, and a document Knowledge Base backed by local Qdrant vector search.
@@ -309,6 +328,35 @@ Verified limitations of the current implementation include:
 - Streamlit reruns can repeat some resume-analysis or interview-history writes.
 - Retrieved document text is supplied to the LLM prompt and should be treated as untrusted content.
 
+## Scalability
+
+The current project is a local-first MVP designed to run as a single Streamlit process. SQLite and local Qdrant file storage are suitable for development and demonstrations, while the role, tenant, RAG, and model boundaries provide a foundation for a larger product.
+
+For production scale, the application would need a persistent multi-user database, durable shared vector storage, background processing for document ingestion, centralized authentication/session management, monitoring, and a separately managed inference service. These production components are not included in the current repository.
+
+## Deployment Limitations
+
+- The application can be deployed as a Streamlit service, but local SQLite and Qdrant files may not persist across ephemeral host restarts.
+- Ollama must be reachable from the deployed environment for live model responses; a local `localhost` Ollama service on the developer machine is not reachable from a remote deployment.
+- The embedding model may need to download on first use, requiring network access unless it is already cached.
+- Server-side microphone capture is not equivalent to browser microphone access, so the Voice Assistant is environment-dependent when deployed remotely.
+- No external persistent database, managed Qdrant service, job queue, or production authentication provider is configured by this project.
+
+## Business Use Cases
+
+- Candidate career planning, skill-gap analysis, learning guidance, and interview preparation
+- Resume ATS review and comparison against a target job description
+- Business job-description analysis and batch candidate resume ranking
+- HR screening guidance and recruitment interview-question generation
+- Tenant-aware business knowledge retrieval from uploaded company documents
+- Admin monitoring of users, activity metrics, feedback, and shared Knowledge Base content
+
+## Market Differentiation
+
+The project differentiates itself as a single role-aware workspace that combines candidate growth and business recruitment workflows instead of treating them as separate tools. Its main technical differentiators are local Ollama inference, SentenceTransformers embeddings, Qdrant-based RAG, SQLite-backed memory, and an extensible role/tenant model without requiring paid proprietary LLM APIs.
+
+This is the current product direction rather than a claim of production-scale capability. The present implementation is an MVP and still requires stronger persistence, security, observability, and deployment infrastructure for enterprise use.
+
 ## Future Improvements
 
 Future work may include stronger password hashing, session expiry, stricter document-list filtering, transactional vector/metadata operations, upload limits, OCR, database migrations, persistent recruitment results, and automated tests. These are future improvements, not current features.
@@ -316,3 +364,9 @@ Future work may include stronger password hashing, session expiry, stricter docu
 ## Interview-Level Project Summary
 
 Ardhanarishwar is a role-based AI SaaS MVP built with Python and Streamlit. It combines candidate career planning, resume intelligence, mock interviews, business recruitment workflows, and a RAG Knowledge Base. SentenceTransformers and Qdrant provide semantic document retrieval, while Ollama provides local language-model inference. SQLite stores authentication, profiles, conversations, documents, analysis history, and feedback. The project demonstrates an AI assistant platform without depending on paid proprietary LLM APIs.
+
+## Deployment Note
+
+The application uses Ollama for local AI responses at `http://localhost:11434`.
+
+For cloud deployment platforms such as Render, Ollama may not be available in the same environment. In that case, the application remains functional and uses its built-in fallback responses, but live local-LLM responses require Ollama to be running on the host machine.
