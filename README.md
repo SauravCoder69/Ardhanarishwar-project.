@@ -6,7 +6,7 @@ An all-in-one AI assistant for candidate career development, recruitment workflo
 
 ## Live Demo & Local Execution
 
-**Live Demo:** https://ardhanarishwar-project.onrender.com/
+[Ardhanarishwar — AI SaaS Platform · Streamlit](https://ardhanarishwar.streamlit.app/)
 
 The live deployment is provided for quickly reviewing the application's interface and core workflow.
 
