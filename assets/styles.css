@@ -1,0 +1,28 @@
+/* Ardhanarishwar SaaS Design System */
+
+:root {
+    --primary: #4338ca;
+    --primary-light: #6366f1;
+    --background: #0f172a;
+    --card-bg: #1e293b;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --success: #22c55e;
+    --warning: #eab308;
+    --danger: #ef4444;
+}
+
+body {
+    background-color: var(--background);
+    color: var(--text-primary);
+}
+
+.stButton>button {
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+
+.stButton>button:hover {
+    transform: translateY(-1px);
+}
