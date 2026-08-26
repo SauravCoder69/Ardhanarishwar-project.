@@ -36,5 +36,5 @@ class MemoryManager:
         save_message(conversation_id, "user", user_query)
         save_message(conversation_id, "assistant", assistant_response, sources)
 
-# Global Memory Manager Instance
+
 memory_manager = MemoryManager()

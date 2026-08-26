@@ -3,7 +3,7 @@ import sys
 import warnings
 import logging
 
-# Suppress HuggingFace internal docstring validation messages before any library imports
+
 class SuppressTransformersStderr:
     def __init__(self, original_stream):
         self.original_stream = original_stream
@@ -31,9 +31,10 @@ import plotly.express as px
 from config import APP_NAME, APP_TAGLINE, get_role_categories, ROLE_CANDIDATE, ROLE_BUSINESS, ROLE_ADMIN, ROLES
 from database.database import init_db
 from database.models import (
-    authenticate_user, create_user, get_all_users, get_system_metrics, get_feedback_stats,
+    authenticate_user, create_user, get_all_users, get_system_metrics, get_dashboard_metrics, get_feedback_stats,
     create_conversation, get_user_conversations, get_conversation_messages, save_message,
-    record_feedback, get_all_documents, can_delete_document, delete_user
+    record_feedback, get_all_documents, can_delete_document, delete_user, change_password,
+    get_unanswered_questions, mark_unanswered_question_resolved
 )
 from core.rag import rag_pipeline
 from core.router import ai_orchestrator
@@ -42,6 +43,9 @@ from utils.helpers import apply_custom_css, render_header, render_metric_card
 
 # Import Feature Modules
 from modules.career import render_career_advisor
+from modules.counselling import render_career_counselling
+from modules.company_strategy import render_company_strategy
+from modules.job_portal import render_admin_job_portal, render_business_job_portal, render_candidate_job_portal
 from modules.resume import render_resume_analyzer
 from modules.interview import render_mock_interview
 from modules.recruitment import render_recruitment
@@ -123,19 +127,19 @@ with st.sidebar:
     # Role-based menu options
     if user_role == ROLE_CANDIDATE:
         nav_options = [
-            "Dashboard", "AI Assistant", "Career Advisor", "Resume Analyzer",
-            "Skill Gap", "Mock Interview", "Voice Assistant", "Knowledge Base",
+            "Dashboard", "AI Assistant", "Career Advisor", "Career Counselling", "Job Portal", "Resume Analyzer",
+            "Mock Interview", "Voice Assistant", "Knowledge Base",
             "Feedback", "Settings"
         ]
     elif user_role == ROLE_BUSINESS:
         nav_options = [
-            "Dashboard", "AI Assistant", "Recruitment Engine", "Business Intelligence",
+            "Dashboard", "AI Assistant", "Job Portal", "Recruitment Engine", "Business Intelligence",
             "Voice Assistant", "Knowledge Base", "Analytics", "Feedback", "Settings"
         ]
     elif user_role == ROLE_ADMIN:
         nav_options = [
-            "Dashboard", "AI Assistant", "Career Advisor", "Resume Analyzer",
-            "Skill Gap", "Mock Interview", "Recruitment Engine", "Business Intelligence",
+            "Dashboard", "AI Assistant", "Career Advisor", "Company Strategy", "Job Management", "Resume Analyzer",
+            "Mock Interview", "Recruitment Engine", "Business Intelligence",
             "Voice Assistant", "Knowledge Base", "Analytics", "Feedback", "User Management", "Settings"
         ]
     else:
@@ -176,7 +180,7 @@ if selected_nav == "Dashboard":
     with col_c:
         st.warning("📚 **RAG Knowledge Base**\nUpload domain PDF documents into Qdrant for semantic vector search.")
 
-# 2. AI ASSISTANT (CHAT CHATBOT)
+
 elif selected_nav == "AI Assistant":
     render_header("AI Chat Assistant")
 
@@ -216,7 +220,7 @@ elif selected_nav == "AI Assistant":
                         st.caption(f"- 📄 {s['document_name']} ({s['category']}) — Match: {s['relevance_score']}%")
 
         # Chat Input
-        prompt = st.chat_input("Ask a question about Careers, Resumes, Interviews, Recruitment, or Business...")
+        prompt = st.chat_input("Ask a career question about Resumes, Skills, Interviews, or Jobs...")
         if prompt:
             with st.chat_message("user"):
                 st.markdown(prompt)
@@ -227,7 +231,8 @@ elif selected_nav == "AI Assistant":
                         query=prompt,
                         user_id=user['id'],
                         conversation_id=st.session_state.current_conversation_id,
-                        tenant_id=user['tenant_id']
+                        tenant_id=user['tenant_id'],
+                        user_role=user_role
                     )
                     st.markdown(res_text)
 
@@ -249,6 +254,25 @@ elif selected_nav == "AI Assistant":
 elif selected_nav in ["Career Advisor", "Skill Gap"]:
     render_career_advisor(user['id'])
 
+# 3b. CAREER COUNSELLING
+elif selected_nav == "Career Counselling":
+    render_career_counselling(user['id'], user['tenant_id'])
+
+# 3c. JOB PORTAL
+elif selected_nav == "Job Portal":
+    if user_role == ROLE_CANDIDATE:
+        render_candidate_job_portal(user['id'])
+    else:
+        render_business_job_portal(user['id'], user['tenant_id'])
+
+# 3d. COMPANY STRATEGY (ADMIN)
+elif selected_nav == "Company Strategy":
+    render_company_strategy(user['id'], user['tenant_id'])
+
+# 3e. JOB MANAGEMENT (ADMIN)
+elif selected_nav == "Job Management":
+    render_admin_job_portal()
+
 # 4. RESUME ANALYZER
 elif selected_nav == "Resume Analyzer":
     render_resume_analyzer(user['id'])
@@ -267,7 +291,7 @@ elif selected_nav == "Business Intelligence":
 
 # 8. VOICE ASSISTANT
 elif selected_nav == "Voice Assistant":
-    render_voice_assistant(user['id'], user['tenant_id'])
+    render_voice_assistant(user['id'], user['tenant_id'], user_role)
 
 # 9. KNOWLEDGE BASE MANAGEMENT
 elif selected_nav == "Knowledge Base":
@@ -291,7 +315,7 @@ elif selected_nav == "Knowledge Base":
                     file_bytes=bytes_data,
                     category=kb_category,
                     source=kb_source,
-                    tenant_id=user['tenant_id'],
+                    tenant_id="tenant_global" if user_role in [ROLE_ADMIN, ROLE_BUSINESS] else user['tenant_id'],
                     uploaded_by=user['id'],
                     user_role=user_role
                 )
@@ -342,6 +366,21 @@ elif selected_nav == "Analytics":
     f2.metric("Positive Satisfaction Rate", f"{fb_stats['positive_pct']}%")
     f3.metric("Negative Satisfaction Rate", f"{fb_stats['negative_pct']}%")
 
+    st.markdown("### 🔔 Candidate Questions Awaiting Knowledge")
+    unanswered = get_unanswered_questions()
+    if unanswered:
+        for item in unanswered:
+            col_q, col_action = st.columns([5, 1])
+            col_q.write(
+                f"**{item['full_name']}** ({item['username']}) | "
+                f"{item['created_at']}\n\nQuestion: *{item['question']}*"
+            )
+            if col_action.button("Resolve", key=f"resolve_question_{item['id']}"):
+                mark_unanswered_question_resolved(item['id'])
+                st.rerun()
+    else:
+        st.info("No unanswered candidate questions are pending.")
+
 # 11. FEEDBACK & CONTINUOUS IMPROVEMENT
 elif selected_nav == "Feedback":
     render_header("Feedback & Continuous Improvement Loop")
@@ -372,6 +411,27 @@ elif selected_nav == "User Management":
 # 13. SETTINGS
 elif selected_nav == "Settings":
     render_header("System Settings")
+
+    st.markdown("### 🔐 Change Your Password")
+    with st.form("change_password_form"):
+        current_password = st.text_input("Current Password", type="password")
+        new_password = st.text_input("New Password", type="password")
+        confirm_password = st.text_input("Confirm New Password", type="password")
+        change_password_submitted = st.form_submit_button("Update Password", type="primary")
+
+    if change_password_submitted:
+        if not current_password or not new_password or not confirm_password:
+            st.warning("Please fill in all password fields.")
+        elif len(new_password) < 8:
+            st.warning("New password must be at least 8 characters long.")
+        elif new_password != confirm_password:
+            st.error("New password and confirmation do not match.")
+        elif change_password(user['id'], current_password, new_password):
+            st.success("Password changed successfully. Use the new password next time you log in.")
+        else:
+            st.error("Current password is incorrect.")
+
+    st.markdown("---")
     
     st.markdown("### ⚙️ Ollama Local LLM Connection Status")
     available = llm_client.check_availability()

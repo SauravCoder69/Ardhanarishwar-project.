@@ -131,6 +131,59 @@ def init_db():
     );
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS unanswered_questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        tenant_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_id INTEGER NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        required_skills TEXT,
+        experience TEXT,
+        salary TEXT,
+        location TEXT,
+        job_type TEXT,
+        status TEXT NOT NULL DEFAULT 'Pending Approval',
+        admin_note TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (business_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS job_applications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        candidate_id INTEGER NOT NULL,
+        resume_name TEXT,
+        resume_path TEXT,
+        cover_message TEXT,
+        status TEXT NOT NULL DEFAULT 'Applied',
+        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(job_id, candidate_id),
+        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+        FOREIGN KEY (candidate_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
+
+    application_columns = [row[1] for row in cursor.execute("PRAGMA table_info(job_applications);").fetchall()]
+    if "resume_path" not in application_columns:
+        cursor.execute("ALTER TABLE job_applications ADD COLUMN resume_path TEXT;")
+
     conn.commit()
 
     cursor.execute("SELECT COUNT(*) FROM users;")

@@ -56,6 +56,11 @@ KNOWLEDGE_CATEGORIES = [
 
 ADMIN_CATEGORIES = [
     "Global Knowledge",
+    "Education",
+    "Career",
+    "Business",
+    "Corporate Finance",
+    "Company Strategy",
     "Policies",
     "Training",
     "HR",

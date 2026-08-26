@@ -2,7 +2,7 @@ import streamlit as st
 from core.router import ai_orchestrator
 from utils.helpers import render_header
 
-# Optional local voice dependencies with graceful fallback
+
 try:
     import pyttsx3
 except ImportError:
@@ -21,12 +21,12 @@ def speak_text_locally(text: str):
     try:
         engine = pyttsx3.init()
         engine.setProperty('rate', 165)
-        engine.say(text[:300])  # Read first 300 chars for quick voice response
+        engine.say(text[:300])  
         engine.runAndWait()
     except Exception as e:
         print(f"Local TTS notice/fallback: {e}")
 
-def render_voice_assistant(user_id: int, tenant_id: str):
+def render_voice_assistant(user_id: int, tenant_id: str, user_role: str):
     """Render Local Voice Assistant Module."""
     render_header("AI Voice Assistant (Local STT & TTS)")
 
@@ -73,7 +73,8 @@ def render_voice_assistant(user_id: int, tenant_id: str):
                 response, sources, agent_name = ai_orchestrator.process_request(
                     query=voice_query_input,
                     user_id=user_id,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
+                    user_role=user_role
                 )
 
                 st.markdown(f"### 🤖 Response ({agent_name})")

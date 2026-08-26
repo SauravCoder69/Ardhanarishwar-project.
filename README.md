@@ -34,6 +34,8 @@ SQLite stores application data, SentenceTransformers creates embeddings, Qdrant 
 - Registration and login
 - Candidate profile and career-goal memory
 - Career Advisor and Skill Gap Analyzer
+- Career Counselling for college and private/government job guidance
+- Job Portal with Business posting, Admin approval, and Candidate applications
 - Resume ATS Analyzer for PDF, DOCX, and TXT files
 - Resume-to-job-description matching
 - Interactive mock interviews with scoring
@@ -59,6 +61,8 @@ SQLite stores application data, SentenceTransformers creates embeddings, Qdrant 
 - Knowledge Base document upload and management
 - Admin document deletion
 - Feedback analytics
+- Company growth, corporate finance, crisis recovery, and low-budget planning
+- Job posting approval and candidate application management
 - Access to the application modules available to the Admin role
 
 ## User Roles
@@ -67,7 +71,7 @@ SQLite stores application data, SentenceTransformers creates embeddings, Qdrant 
 - **Business**: Recruitment, candidate matching, business intelligence, chat, and company knowledge tools.
 - **Admin**: Platform metrics, user management, global knowledge documents, analytics, and the broader application module set.
 
-The sidebar navigation is role-specific. Admin includes Resume Analyzer, Career Advisor, Recruitment Engine, Business Intelligence, Knowledge Base, Analytics, and User Management.
+The sidebar navigation is role-specific. Admin includes Resume Analyzer, Career Advisor, Company Strategy, Recruitment Engine, Business Intelligence, Knowledge Base, Analytics, and User Management.
 
 ## Technology Stack
 
@@ -134,6 +138,7 @@ modules/
   recruitment.py          JD analysis, batch matching, and interview questions
   business.py             Business and HR assistant UI
   voice.py                Voice input and text-to-speech UI
+  job_portal.py           Business job posting, Admin approval, and Candidate applications
 utils/
   helpers.py              Shared CSS and header rendering
   pdf.py                  PDF, DOCX, and TXT extraction plus resume parsing

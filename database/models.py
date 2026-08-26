@@ -14,6 +14,27 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
         return dict(user)
     return None
 
+def change_password(user_id: int, current_password: str, new_password: str) -> bool:
+    """Change a user's password after verifying the current password."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM users WHERE id = ? AND password_hash = ?;",
+        (user_id, hash_password(current_password))
+    )
+    if not cursor.fetchone():
+        conn.close()
+        return False
+
+    cursor.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?;",
+        (hash_password(new_password), user_id)
+    )
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
 def create_user(username: str, password: str, role: str, tenant_id: str, email: str = "", full_name: str = "") -> Optional[int]:
     """Register a new user in the database."""
     conn = get_connection()
@@ -174,7 +195,13 @@ def can_delete_document(user: Optional[Dict[str, Any]], document: Optional[Dict[
         )
 
     if role == "Business":
-        return document.get("tenant_id") == tenant_id
+        return (
+            document.get("tenant_id") == tenant_id or
+            (
+                document.get("tenant_id") == "tenant_global" and
+                document.get("uploaded_by") == user_id
+            )
+        )
 
     return False
 
@@ -263,6 +290,151 @@ def get_feedback_stats() -> Dict[str, Any]:
         "negative_pct": neg_pct,
         "recent_feedback": recent
     }
+
+def record_unanswered_question(user_id: int, tenant_id: str, question: str):
+    """Record a candidate question that had no relevant RAG information."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO unanswered_questions (user_id, tenant_id, question) VALUES (?, ?, ?);",
+        (user_id, tenant_id, question.strip())
+    )
+    conn.commit()
+    conn.close()
+
+def get_unanswered_questions(status: str = "Pending") -> List[Dict[str, Any]]:
+    """Retrieve unanswered candidate questions for the Admin dashboard."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT q.id, q.question, q.status, q.created_at,
+           u.full_name, u.username, u.email, q.tenant_id
+    FROM unanswered_questions q
+    JOIN users u ON u.id = q.user_id
+    WHERE q.status = ?
+    ORDER BY q.created_at DESC;
+    """, (status,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def mark_unanswered_question_resolved(question_id: int) -> bool:
+    """Mark an Admin-reviewed unanswered question as resolved."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE unanswered_questions SET status = 'Resolved' WHERE id = ?;",
+        (question_id,)
+    )
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+def create_job(business_id: int, tenant_id: str, company_name: str, title: str, description: str,
+               required_skills: str, experience: str, salary: str, location: str, job_type: str) -> int:
+    """Create a job posting awaiting Admin approval."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO jobs (business_id, tenant_id, company_name, title, description,
+                      required_skills, experience, salary, location, job_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    """, (business_id, tenant_id, company_name, title, description, required_skills,
+          experience, salary, location, job_type))
+    job_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return job_id
+
+def get_jobs(status: Optional[str] = None, business_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Retrieve jobs with optional status and owner filters."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = "SELECT * FROM jobs WHERE 1 = 1"
+    params = []
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if business_id:
+        query += " AND business_id = ?"
+        params.append(business_id)
+    query += " ORDER BY created_at DESC;"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def update_job_status(job_id: int, status: str, admin_note: str = "") -> bool:
+    """Approve, reject, close, or archive a job posting."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE jobs SET status = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+    """, (status, admin_note, job_id))
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+def apply_to_job(job_id: int, candidate_id: int, resume_name: str, cover_message: str, resume_path: str = "") -> bool:
+    """Submit one application per candidate for an approved job."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        INSERT INTO job_applications (job_id, candidate_id, resume_name, resume_path, cover_message)
+        VALUES (?, ?, ?, ?, ?);
+        """, (job_id, candidate_id, resume_name, resume_path, cover_message))
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+def has_applied(job_id: int, candidate_id: int) -> bool:
+    """Check whether a candidate already applied to a job."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM job_applications WHERE job_id = ? AND candidate_id = ?;", (job_id, candidate_id))
+    applied = cursor.fetchone() is not None
+    conn.close()
+    return applied
+
+def get_candidate_applications(candidate_id: int) -> List[Dict[str, Any]]:
+    """Retrieve a candidate's submitted applications."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT a.*, j.company_name, j.title, j.location
+    FROM job_applications a JOIN jobs j ON j.id = a.job_id
+    WHERE a.candidate_id = ? ORDER BY a.applied_at DESC;
+    """, (candidate_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def get_job_applications(business_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Retrieve applications for Admin or an owning Business account."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+    SELECT a.*, j.company_name, j.title, j.business_id, j.tenant_id,
+           u.full_name, u.email, u.username
+    FROM job_applications a
+    JOIN jobs j ON j.id = a.job_id
+    JOIN users u ON u.id = a.candidate_id
+    """
+    params = []
+    if business_id:
+        query += " WHERE j.business_id = ?"
+        params.append(business_id)
+    query += " ORDER BY a.applied_at DESC;"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 def get_system_metrics() -> Dict[str, Any]:
     """Retrieve high-level metrics for Admin Dashboard."""
