@@ -37,7 +37,7 @@ DB_PATH = DATA_DIR / "ardhanarishwar.db"
 QDRANT_STORAGE_PATH = DATA_DIR / "qdrant_storage"
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 QDRANT_COLLECTION_NAME = "ardhanarishwar_kb"
