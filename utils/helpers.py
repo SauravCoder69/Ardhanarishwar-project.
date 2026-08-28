@@ -126,14 +126,3 @@ def render_header(title_suffix: str = ""):
     """
     st.markdown(html, unsafe_allow_html=True)
 
-def render_metric_card(label: str, value: str, delta: str = None):
-    """Render custom metric card."""
-    delta_html = f'<div style="color:#16a34a; font-size:0.85rem; margin-top:0.3rem;">↑ {delta}</div>' if delta else ''
-    html = f"""
-    <div class="metric-card">
-        <div class="metric-val">{value}</div>
-        <div class="metric-lbl">{label}</div>
-        {delta_html}
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)

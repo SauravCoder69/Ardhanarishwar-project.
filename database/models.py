@@ -205,11 +205,20 @@ def can_delete_document(user: Optional[Dict[str, Any]], document: Optional[Dict[
 
     return False
 
-def get_all_documents() -> List[Dict[str, Any]]:
-    """Retrieve all uploaded knowledge base documents."""
+def get_all_documents(current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Retrieve knowledge-base documents visible to the current user."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM documents ORDER BY uploaded_at DESC;")
+    if current_user and current_user.get("role") == "Admin":
+        cursor.execute("SELECT * FROM documents ORDER BY uploaded_at DESC;")
+    elif current_user and current_user.get("tenant_id"):
+        cursor.execute(
+            "SELECT * FROM documents WHERE tenant_id IN (?, 'tenant_global') ORDER BY uploaded_at DESC;",
+            (current_user["tenant_id"],)
+        )
+    else:
+        conn.close()
+        return []
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -435,6 +444,18 @@ def get_job_applications(business_id: Optional[int] = None) -> List[Dict[str, An
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+def update_application_status(application_id: int, status: str) -> bool:
+    """Update candidate application status (e.g. Shortlisted, Interview Scheduled, Rejected)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE job_applications SET status = ? WHERE id = ?;
+    """, (status, application_id))
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
 
 def get_system_metrics() -> Dict[str, Any]:
     """Retrieve high-level metrics for Admin Dashboard."""

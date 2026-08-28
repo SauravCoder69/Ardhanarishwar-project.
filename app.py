@@ -39,7 +39,7 @@ from database.models import (
 from core.rag import rag_pipeline
 from core.router import ai_orchestrator
 from core.llm import llm_client
-from utils.helpers import apply_custom_css, render_header, render_metric_card
+from utils.helpers import apply_custom_css, render_header
 
 # Import Feature Modules
 from modules.career import render_career_advisor
@@ -184,7 +184,6 @@ if selected_nav == "Dashboard":
 elif selected_nav == "AI Assistant":
     render_header("AI Chat Assistant")
 
-    # Conversation Selector
     user_convs = get_user_conversations(user['id'])
     if not user_convs:
         c_id = create_conversation(user['id'], user['tenant_id'], user_role, "General Chat")
@@ -210,7 +209,7 @@ elif selected_nav == "AI Assistant":
     with c_right:
         messages = get_conversation_messages(st.session_state.current_conversation_id)
         
-        # Display Message History
+        
         for msg in messages:
             with st.chat_message(msg['sender']):
                 st.markdown(msg['content'])
@@ -219,7 +218,7 @@ elif selected_nav == "AI Assistant":
                     for s in msg['sources']:
                         st.caption(f"- 📄 {s['document_name']} ({s['category']}) — Match: {s['relevance_score']}%")
 
-        # Chat Input
+       
         prompt = st.chat_input("Ask a career question about Resumes, Skills, Interviews, or Jobs...")
         if prompt:
             with st.chat_message("user"):
@@ -326,7 +325,7 @@ elif selected_nav == "Knowledge Base":
 
     st.markdown("---")
     st.markdown("### 📑 Indexed Knowledge Base Documents")
-    docs = get_all_documents()
+    docs = get_all_documents(user)
     if docs:
         for doc in docs:
             can_delete = can_delete_document(user, doc)

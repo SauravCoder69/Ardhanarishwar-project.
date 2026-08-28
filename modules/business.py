@@ -32,7 +32,8 @@ def render_business_assistant(user_id: int, tenant_id: str):
                     query=user_query,
                     user_id=user_id,
                     category_filter="Business",
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
+                    user_role="Business"
                 )
 
                 st.markdown(f"### 🤖 Response from **{agent_name}**")

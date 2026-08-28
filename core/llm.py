@@ -1,7 +1,6 @@
 import requests
-import json
 from config import OLLAMA_BASE_URL, OLLAMA_DEFAULT_MODEL
-from typing import Dict, Any, List, Optional
+from typing import Any, List, Optional
 
 class OllamaLLM:
     """Wrapper for locally hosted open-source LLM via Ollama API."""
@@ -29,7 +28,7 @@ class OllamaLLM:
             pass
         return [self.model]
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, temperature: float = 0.7) -> str:
+    def generate(self, prompt: str, system_prompt: Optional[str] = None, temperature: float = 0.7, timeout: int = 90) -> str:
         """
         Generate completion using local Ollama model.
         Auto-detects active pulled model or returns intelligent fallback response if model is missing.
@@ -55,7 +54,7 @@ class OllamaLLM:
             payload["system"] = system_prompt
 
         try:
-            response = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=90)
+            response = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=timeout)
             if response.status_code == 200:
                 return response.json().get("response", "").strip()
             elif response.status_code == 404:
@@ -68,54 +67,33 @@ class OllamaLLM:
         except Exception as e:
             return self._fallback_response(prompt, system_prompt, str(e))
 
-    def chat(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
-        """Chat completion endpoint for multi-turn conversations."""
-        if not self.check_availability():
-            last_msg = messages[-1]['content'] if messages else ""
-            return self._fallback_response(last_msg)
-
-        available_models = self.list_available_models()
-        active_model = self.model
-        if available_models and active_model not in available_models and active_model + ":latest" not in available_models:
-            active_model = available_models[0]
-
-        payload = {
-            "model": active_model,
-            "messages": messages,
-            "stream": False,
-            "options": {
-                "temperature": temperature
-            }
-        }
-        try:
-            response = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=90)
-            if response.status_code == 200:
-                msg = response.json().get("message", {})
-                return msg.get("content", "").strip()
-            elif response.status_code == 404:
-                last_msg = messages[-1]['content'] if messages else ""
-                return self._fallback_response(
-                    last_msg, None,
-                    f"Model '{active_model}' is not pulled in Ollama yet. Run `ollama pull {active_model}` in your terminal."
-                )
-            else:
-                return f"⚠️ Ollama chat error {response.status_code}. Make sure model '{active_model}' is pulled."
-        except Exception as e:
-            return self._fallback_response(messages[-1]['content'] if messages else "", None, str(e))
-
     def _fallback_response(self, user_prompt: str, system_prompt: Optional[str] = None, err_msg: str = "") -> str:
         """
         Intelligent local fallback generator if Ollama is not active locally.
         Provides realistic, structured assistance while indicating local Ollama status.
         """
         prompt_lower = user_prompt.lower()
+        system_lower = (system_prompt or "").lower()
+
+        # Handle Intent Classification prompt fallback specifically
+        if "intent classification" in system_lower or "available agents" in system_lower:
+            if any(k in prompt_lower for k in ["interview", "mock", "behavioral"]):
+                return "Interview Agent"
+            elif any(k in prompt_lower for k in ["resume", "resumes", "cv", "ats", "bullet point", "portfolio"]):
+                return "Resume Agent"
+            elif any(k in prompt_lower for k in ["recruitment", "recruit", "hiring", "hire", "talent", "candidate", "screening", "screen"]):
+                return "Recruitment Agent"
+            elif any(k in prompt_lower for k in ["business", "strategy", "operations", "operation", "budget", "finance", "revenue"]):
+                return "Business Agent"
+            elif any(k in prompt_lower for k in ["career", "roadmap", "learning", "skill", "skills", "job", "java", "python", "coding", "learn", "growth"]):
+                return "Career Agent"
+            else:
+                return "General Assistant"
         
         fallback_notice = (
-            "\n\n*💡 Note: Ollama is currently disconnected on `http://localhost:11434`. "
+            "\n\n*💡 Note: Ollama is currently disconnected or loading on `http://localhost:11434`. "
             "To enable live open-source LLM generation, run `ollama serve` and `ollama pull llama3.2` on your system.*"
         )
-
-        system_lower = (system_prompt or "").lower()
         if "corporate strategy" in system_lower or "company strategy" in prompt_lower:
             return (
                 "### 🏢 Company Strategy & Financial Health Guidance\n"

@@ -1,4 +1,4 @@
-from database.models import get_candidate_profile, save_candidate_profile, get_conversation_messages, save_message
+from database.models import get_candidate_profile, save_message
 from typing import Dict, Any, List
 
 class MemoryManager:
@@ -18,18 +18,6 @@ class MemoryManager:
             f"- Experience Level: {profile.get('experience', 'N/A')}\n"
             f"- Learning Interests: {profile.get('learning_interests', 'N/A')}\n"
         )
-
-    def get_short_term_messages(self, conversation_id: int, max_history: int = 6) -> List[Dict[str, str]]:
-        """Fetch recent message turns formatted for LLM conversation history."""
-        messages = get_conversation_messages(conversation_id)
-        formatted = []
-        for msg in messages[-max_history:]:
-            role = "user" if msg['sender'] == "user" else "assistant"
-            formatted.append({
-                "role": role,
-                "content": msg['content']
-            })
-        return formatted
 
     def save_chat_turn(self, conversation_id: int, user_query: str, assistant_response: str, sources: List[Dict[str, Any]] = None):
         """Persist user query and assistant answer into database."""

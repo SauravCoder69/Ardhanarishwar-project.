@@ -9,6 +9,7 @@ from database.models import (
     get_jobs,
     has_applied,
     update_job_status,
+    update_application_status,
 )
 from utils.helpers import render_header
 
@@ -75,16 +76,31 @@ def render_business_job_portal(user_id: int, tenant_id: str):
     else:
         st.info("You have not posted any jobs yet.")
 
-    st.markdown("### 👥 Applications Received")
+    st.markdown("### 👥 Applications Received & Candidate Shortlisting")
     applications = get_job_applications(business_id=user_id)
     if applications:
         for application in applications:
-            st.write(
-                f"**{application['full_name']}** ({application['email'] or application['username']}) "
-                f"applied for **{application['title']}** on {application['applied_at']}"
-            )
-            st.caption(f"Resume: {application['resume_name'] or 'Not provided'} | Message: {application['cover_message'] or 'None'}")
-            _resume_download(application, f"business_resume_{application['id']}")
+            with st.expander(f"👤 {application['full_name']} — {application['title']} | Current Status: {application['status']}"):
+                st.write(
+                    f"**Candidate:** {application['full_name']} ({application['email'] or application['username']}) "
+                    f"applied on {application['applied_at']}"
+                )
+                st.caption(f"Resume: {application['resume_name'] or 'Not provided'} | Message: {application['cover_message'] or 'None'}")
+                _resume_download(application, f"business_resume_{application['id']}")
+                
+                col1, col2, col3 = st.columns(3)
+                if col1.button("⭐ Shortlist Candidate", key=f"shortlist_{application['id']}"):
+                    update_application_status(application['id'], "Shortlisted")
+                    st.toast(f"Candidate {application['full_name']} Shortlisted!")
+                    st.rerun()
+                if col2.button("📅 Schedule Interview", key=f"sched_{application['id']}"):
+                    update_application_status(application['id'], "Interview Scheduled")
+                    st.toast(f"Interview Scheduled for {application['full_name']}!")
+                    st.rerun()
+                if col3.button("❌ Reject", key=f"reject_app_{application['id']}"):
+                    update_application_status(application['id'], "Rejected")
+                    st.toast("Application marked Rejected.")
+                    st.rerun()
     else:
         st.info("No applications received yet.")
 
@@ -119,7 +135,7 @@ def render_admin_job_portal():
             st.write(
                 f"**{application['full_name']}** ({application['email'] or application['username']}) "
                 f"→ **{application['title']}** at {application['company_name']} | "
-                f"Status: {application['status']} | {application['applied_at']}"
+                f"Status: **{application['status']}** | {application['applied_at']}"
             )
             _resume_download(application, f"admin_resume_{application['id']}")
     else:
@@ -176,14 +192,30 @@ def render_candidate_job_portal(candidate_id: int):
         st.info("No approved jobs match your search right now.")
 
     st.markdown("---")
-    st.markdown("### 📄 My Applications")
+    st.markdown("### 📄 My Applications & HR Status Notifications")
     applications = get_candidate_applications(candidate_id)
     if applications:
         for application in applications:
-            st.write(
-                f"**{application['title']}** at {application['company_name']} | "
-                f"{application['location'] or 'Location not specified'} | "
-                f"{application['status']} | Applied: {application['applied_at']}"
-            )
+            status = application['status']
+            if status == "Shortlisted":
+                st.success(
+                    f"🟢 **SHORTLISTED!** 🎉 Congratulations! Your profile for **{application['title']}** at **{application['company_name']}** "
+                    f"has been shortlisted by the HR team! Use [AI Mock Interview] to prepare."
+                )
+            elif status == "Interview Scheduled":
+                st.info(
+                    f"📅 **INTERVIEW SCHEDULED!** Your interview round for **{application['title']}** at **{application['company_name']}** "
+                    f"has been scheduled. Good luck!"
+                )
+            elif status == "Rejected":
+                st.error(
+                    f"🔴 **Status:** Application for **{application['title']}** at **{application['company_name']}** was not selected."
+                )
+            else:
+                st.write(
+                    f"ℹ️ **{application['title']}** at {application['company_name']} | "
+                    f"{application['location'] or 'Location not specified'} | "
+                    f"**Status: {status}** | Applied: {application['applied_at']}"
+                )
     else:
         st.info("You have not applied to any jobs yet.")
