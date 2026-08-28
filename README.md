@@ -2,9 +2,15 @@
 
 > **Enterprise Multi-Agent Platform for Candidate Career Growth & HR Recruitment**
 
-🌐 **Live Deployment**: [https://ardhanarishwar.streamlit.app/](https://ardhanarishwar.streamlit.app/)
+🌐 **Live Deployment:** https://ardhanarishwar.streamlit.app/
 
----
+> **⚠️ Full Functionality / Testing Notice**
+> The live deployment provides access to the application, but some features may be limited in the hosted environment.
+>
+> **For complete functionality and to test all AI agents, Ollama-powered features, RAG pipeline, and end-to-end workflows, please run the project locally.**
+>
+> **Local Setup:**
+> Please follow the installation and setup instructions provided below to run the complete system locally and verify all features.
 
 ## 🤖 Specialist AI Agent Architecture
 
