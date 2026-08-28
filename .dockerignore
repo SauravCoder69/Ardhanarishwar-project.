@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+data/ardhanarishwar.db
+data/qdrant_storage/
+data/job_resumes/
+.venv/
+env/
+.git/
+.DS_Store
