@@ -1,4 +1,5 @@
 import streamlit as st
+from config import APP_NAME, APP_TAGLINE
 
 def apply_custom_css():
     """Apply modern SaaS styling, dark theme accents, glassmorphism, and responsive layout."""
@@ -114,15 +115,14 @@ def apply_custom_css():
 
 def render_header(title_suffix: str = ""):
     """Render application header banner."""
-    title = "Ardhanarishwar"
+    title = APP_NAME
     if title_suffix:
         title += f" — {title_suffix}"
     
     html = f"""
     <div class="app-header">
         <div class="app-title">⚡ {title}</div>
-        <div class="app-tagline">One AI Platform for Career Growth, Recruitment & Business Intelligence</div>
+        <div class="app-tagline">{APP_TAGLINE}</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
-

@@ -70,8 +70,8 @@ def parse_resume_structure(text: str) -> Dict[str, Any]:
     SKILL_KEYWORDS = [
         "python", "java", "c++", "javascript", "typescript", "html", "css", "react", "angular", "vue",
         "node.js", "express", "fastapi", "flask", "django", "sql", "postgresql", "mysql", "mongodb",
-        "sqlite", "redis", "qdrant", "pinecone", "chromadb", "aws", "azure", "gcp", "docker", "kubernetes",
-        "git", "ci/cd", "machine learning", "deep learning", "nlp", "llm", "rag", "langchain", "llamaindex",
+        "sqlite", "redis", "aws", "azure", "gcp", "docker", "kubernetes",
+        "git", "ci/cd", "machine learning", "deep learning", "nlp", "llm",
         "pytorch", "tensorflow", "scikit-learn", "pandas", "numpy", "opencv", "devops", "agile", "jira",
         "rest api", "graphql", "microservices", "system design", "data analysis", "tableau", "power bi"
     ]

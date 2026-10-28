@@ -1,5 +1,5 @@
 from database.models import get_candidate_profile, save_message
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 class MemoryManager:
     """Manages Short-Term Conversation History and Long-Term Candidate Profile Memory."""
@@ -19,10 +19,10 @@ class MemoryManager:
             f"- Learning Interests: {profile.get('learning_interests', 'N/A')}\n"
         )
 
-    def save_chat_turn(self, conversation_id: int, user_query: str, assistant_response: str, sources: List[Dict[str, Any]] = None):
+    def save_chat_turn(self, conversation_id: int, user_query: str, assistant_response: str):
         """Persist user query and assistant answer into database."""
         save_message(conversation_id, "user", user_query)
-        save_message(conversation_id, "assistant", assistant_response, sources)
+        save_message(conversation_id, "assistant", assistant_response)
 
 
 memory_manager = MemoryManager()

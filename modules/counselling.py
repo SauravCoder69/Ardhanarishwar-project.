@@ -1,10 +1,9 @@
 import streamlit as st
 from core.llm import llm_client
-from core.rag import rag_pipeline
 from utils.helpers import render_header
 
 
-def render_career_counselling(user_id: int, tenant_id: str):
+def render_career_counselling(user_id: int):
     """Render education and career-path counselling for candidates."""
     render_header("Career Counselling Studio")
 
@@ -71,17 +70,7 @@ def render_career_counselling(user_id: int, tenant_id: str):
                 f"Additional context: {additional_context}"
             )
 
-            with st.spinner("Preparing your counselling recommendation with RAG and Ollama..."):
-                rag_context, sources = rag_pipeline.retrieve_context(
-                    counselling_query,
-                    limit=4,
-                    category_filter="Education",
-                    tenant_id_filter=tenant_id
-                )
-                retrieved_knowledge = (
-                    f"Retrieved education knowledge:\n{rag_context}"
-                    if rag_context else "No verified college information was retrieved."
-                )
+            with st.spinner("Preparing your counselling recommendation with Ollama..."):
                 prompt = f"""
 Create a practical career counselling recommendation using the candidate details below.
 
@@ -95,17 +84,14 @@ College budget: {college_budget}
 Maximum annual budget: {budget_amount}
 Additional context: {additional_context}
 
-{retrieved_knowledge}
-
 Cover:
-1. Recommend the top 5 colleges or institutes from the retrieved knowledge, ranked by fit for the candidate's budget, location, stream, and interests.
-2. Show the college list in a table with: rank, college name, course, fee or fee range, location, eligibility, admission route, and why it fits the budget.
-3. Separate options into affordable, moderate-budget, and ambitious choices when enough verified data exists.
-4. Suggest suitable private-sector and government-sector job paths based on the answers.
-5. Give a 30-day action plan and relevant exams or skills to research.
-6. Clear cautions against choosing a college only by ranking or making guaranteed placement claims.
+1. Suggest suitable course or career-path types based on the candidate's interests and background.
+2. Provide a checklist to compare colleges, including accreditation, curriculum, eligibility, fees, scholarships, location, and verified placement data.
+3. Suggest suitable private-sector and government-sector job paths based on the answers.
+4. Give a 30-day action plan and relevant exams or skills to research.
+5. Clearly distinguish general guidance from facts that must be verified with official sources.
 
-Only name colleges that appear in the retrieved knowledge. If the retrieved knowledge does not contain enough college data, say so and provide the exact documents or official websites the candidate should check. Do not invent college rankings, fees, eligibility rules, or guaranteed salaries. Clearly label anything the candidate must verify from official sources.
+Do not invent or rank specific colleges, fees, eligibility rules, admission dates, placement rates, or guaranteed salaries. Direct the candidate to official college and exam websites for current information.
 """
                 response = llm_client.generate(
                     prompt,
@@ -117,12 +103,3 @@ Only name colleges that appear in the retrieved knowledge. If the retrieved know
 
             st.markdown("### 🧭 Your Counselling Recommendation")
             st.markdown(response)
-
-            if sources:
-                st.markdown("---")
-                st.markdown("#### 📚 Retrieved Education Sources")
-                for source in sources:
-                    st.caption(
-                        f"- 📄 {source['document_name']} ({source['category']}) - "
-                        f"Match: {source['relevance_score']}%"
-                    )

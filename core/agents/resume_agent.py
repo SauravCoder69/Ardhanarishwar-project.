@@ -9,7 +9,6 @@ class ResumeAgent(BaseAgent):
     """Specialist agent for resume and ATS-related assistance."""
 
     name = "Resume Agent"
-    category_filter = "Resume"
     system_prompt = """
 You are the Resume Specialist Agent for Ardhanarishwar AI.
 
@@ -21,7 +20,7 @@ Your responsibilities:
 - resume formatting guidance
 - skills prioritization for target roles
 
-Use the retrieved knowledge and user profile when available.
+Use the user profile when available.
 Do not invent job-specific facts, salaries, or guarantees.
 Be concise, practical, and action-oriented.
 """.strip()
@@ -29,19 +28,9 @@ Be concise, practical, and action-oriented.
     def run(
         self,
         query: str,
-        user_id: Optional[int] = None,
-        tenant_id: Optional[str] = None,
-        user_role: Optional[str] = None,
-        category_filter: Optional[str] = None,
         profile_context: Optional[str] = None,
-        conversation_context: Optional[str] = None,
-    ):
+    ) -> str:
         return super().run(
             query=query,
-            user_id=user_id,
-            tenant_id=tenant_id,
-            user_role=user_role,
-            category_filter=category_filter,
             profile_context=profile_context,
-            conversation_context=conversation_context,
         )

@@ -1,6 +1,6 @@
 import requests
 from config import OLLAMA_BASE_URL, OLLAMA_DEFAULT_MODEL
-from typing import Any, List, Optional
+from typing import List, Optional
 
 class OllamaLLM:
     """Wrapper for locally hosted open-source LLM via Ollama API."""
@@ -81,10 +81,6 @@ class OllamaLLM:
                 return "Interview Agent"
             elif any(k in prompt_lower for k in ["resume", "resumes", "cv", "ats", "bullet point", "portfolio"]):
                 return "Resume Agent"
-            elif any(k in prompt_lower for k in ["recruitment", "recruit", "hiring", "hire", "talent", "candidate", "screening", "screen"]):
-                return "Recruitment Agent"
-            elif any(k in prompt_lower for k in ["business", "strategy", "operations", "operation", "budget", "finance", "revenue"]):
-                return "Business Agent"
             elif any(k in prompt_lower for k in ["career", "roadmap", "learning", "skill", "skills", "job", "java", "python", "coding", "learn", "growth"]):
                 return "Career Agent"
             else:
@@ -94,29 +90,7 @@ class OllamaLLM:
             "\n\n*💡 Note: Ollama is currently disconnected or loading on `http://localhost:11434`. "
             "To enable live open-source LLM generation, run `ollama serve` and `ollama pull llama3.2` on your system.*"
         )
-        if "corporate strategy" in system_lower or "company strategy" in prompt_lower:
-            return (
-                "### 🏢 Company Strategy & Financial Health Guidance\n"
-                "**Immediate diagnosis**\n"
-                "- Track cash balance, monthly burn, runway, gross margin, receivables, payables, customer retention, and break-even point.\n"
-                "- Separate essential costs from costs that can be paused, renegotiated, or converted to variable costs.\n\n"
-                "**Growth plan**\n"
-                "- Focus on one profitable customer segment, one measurable value proposition, and the lowest-cost sales channel.\n"
-                "- Test pricing and retention before adding headcount or expanding into new markets.\n\n"
-                "**Financial or crisis plan**\n"
-                "- Prepare a 13-week cash-flow forecast, collect overdue invoices, negotiate supplier terms, and protect revenue-generating operations.\n"
-                "- Prioritize payroll, critical suppliers, security, legal obligations, and customer commitments. Get advice from a qualified accountant or legal adviser for regulated decisions.\n\n"
-                "**Low-budget operating plan**\n"
-                "- Keep a small core team, use automation and open-source tools where appropriate, remove low-return subscriptions, and review every expense weekly.\n"
-                "- Set weekly owners and targets for cash collection, sales, delivery, and customer retention.\n\n"
-                "**Next 30 days**\n"
-                "1. Build a 13-week cash-flow forecast.\n"
-                "2. Rank every expense by business impact.\n"
-                "3. Contact key customers and overdue accounts.\n"
-                "4. Choose one growth experiment and measure its result."
-                + fallback_notice
-            )
-        elif "career counsellor" in system_lower or "career counselling" in prompt_lower:
+        if "career counsellor" in system_lower or "career counselling" in prompt_lower:
             return (
                 "### 🎓 Career Counselling Guidance\n"
                 "**College or course choice**\n"
@@ -139,36 +113,27 @@ class OllamaLLM:
                 "### 🎯 Recommended Career Roadmap for AI Engineering\n"
                 "1. **Core Programming**: Master Python 3.11+, OOP, AsyncIO, and Typing.\n"
                 "2. **Data & ML Foundations**: NumPy, Pandas, Scikit-learn, and PyTorch.\n"
-                "3. **RAG & Vector Storage**: Qdrant, Chroma, FastEmbed, and Chunking Strategies.\n"
-                "4. **Local LLM Integration**: Ollama, HuggingFace Transformers, vLLM.\n"
-                "5. **Production Backend**: FastAPI, Docker, Async Queues, and Monitoring.\n\n"
-                "**Recommended Action**: Build a end-to-end RAG project combining Qdrant + FastAPI."
+                "3. **Backend & APIs**: REST APIs, databases, and reliable data handling.\n"
+                "4. **Local LLM Integration**: Ollama and HuggingFace Transformers.\n"
+                "5. **Production Skills**: FastAPI, Docker, Async Queues, and Monitoring.\n\n"
+                "**Recommended Action**: Build an end-to-end AI application with a tested API."
                 + fallback_notice
             )
         elif "interview" in prompt_lower or "question" in prompt_lower:
             return (
                 "### 🎤 Technical Interview Question\n"
-                "**Question**: Explain how Retrieval-Augmented Generation (RAG) improves LLM factual accuracy compared to standard zero-shot prompting.\n\n"
+                "**Question**: Explain how you would design and test a reliable REST API for a production application.\n\n"
                 "**Key points to touch upon**:\n"
-                "- Grounding responses in domain-specific documents\n"
-                "- Vector embedding similarity search using cosine distance in Qdrant\n"
-                "- Mitigating hallucinations by providing explicit context in system prompt"
-                + fallback_notice
-            )
-        elif "recruitment" in prompt_lower or "hiring" in prompt_lower or "candidate" in prompt_lower:
-            return (
-                "### 💼 Business Recruitment Guidance\n"
-                "When evaluating senior technical candidates:\n"
-                "- **Technical Competency**: Review hands-on system architecture experience and GitHub projects.\n"
-                "- **Problem Solving**: Evaluate candidate trade-off analysis between local inference (Ollama) vs cloud API latency.\n"
-                "- **Culture Fit**: Look for continuous learning and clear technical communication."
+                "- Clear request and response schemas\n"
+                "- Input validation, error handling, and authentication\n"
+                "- Automated tests, observability, and performance"
                 + fallback_notice
             )
         else:
             return (
                 f"### 🤖 Ardhanarishwar AI Assistant\n"
                 f"Thank you for your question: *\"{user_prompt[:80]}\"*\n\n"
-                f"I am ready to assist you with Career Planning, Resume ATS Scoring, Mock Interviews, and Business Recruitment workflows.\n"
+                f"I can assist with career planning, resume analysis, skill development, and interview preparation.\n"
                 + fallback_notice
             )
 

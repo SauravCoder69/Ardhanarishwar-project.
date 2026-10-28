@@ -27,7 +27,7 @@ def render_career_advisor(user_id: int):
             index=0
         )
         preferred_role = st.text_input("Preferred Role Title", value=profile.get('preferred_role', 'Senior AI Engineer'))
-        learning_interests = st.text_input("Learning Interests", value=profile.get('learning_interests', 'RAG, Vector DBs, Ollama, Docker, Cloud Deployment'))
+        learning_interests = st.text_input("Learning Interests", value=profile.get('learning_interests', 'Python, Data Science, Ollama, Docker, Cloud Deployment'))
 
     if st.button("💾 Save Profile & Generate Roadmap", type="primary"):
         save_candidate_profile(user_id, education, current_skills_input, experience, career_goal, preferred_role, learning_interests)

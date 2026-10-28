@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, Optional, TypedDict
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -18,9 +18,7 @@ AGENT_ROLE_ACCESS = {
     "Resume Agent": {"Candidate", "Admin"},
     "Interview Agent": {"Candidate", "Admin"},
     "Career Agent": {"Candidate", "Admin"},
-    "Recruitment Agent": {"Business", "Admin"},
-    "Business Agent": {"Business", "Admin"},
-    "General Assistant": {"Candidate", "Business", "Admin"},
+    "General Assistant": {"Candidate", "Admin"},
 }
 
 
@@ -36,13 +34,9 @@ def _authorization_error(agent_name: str, user_role: Optional[str]) -> Optional[
 class AgentGraphState(TypedDict):
     query: str
     profile_context: str
-    tenant_id: Optional[str]
     user_role: Optional[str]
-    category_filter: Optional[str]
     agent_name: str
     response: str
-    sources: List[Dict[str, Any]]
-    agent_label: str
 
 
 def _specialist_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -50,52 +44,32 @@ def _specialist_node(state: Dict[str, Any]) -> Dict[str, Any]:
     user_role = state.get("user_role")
     authorization_error = _authorization_error(agent_name, user_role)
     if authorization_error:
-        return {
-            "response": authorization_error,
-            "sources": [],
-            "agent_label": "Authorization Guard",
-        }
+        return {"response": authorization_error}
 
     agent = get_agent(agent_name)
-    response_text, sources, actual_name = agent.run(
+    response_text = agent.run(
         query=state["query"],
-        tenant_id=state.get("tenant_id"),
-        user_role=user_role,
-        category_filter=state.get("category_filter"),
         profile_context=state.get("profile_context"),
     )
-    return {
-        "response": response_text,
-        "sources": sources,
-        "agent_label": actual_name,
-    }
+    return {"response": response_text}
 
 
 def run_agent_graph(
     query: str,
     profile_context: str,
-    tenant_id: Optional[str],
     agent_name: str,
-    category_filter: Optional[str] = None,
     user_role: Optional[str] = None,
-) -> tuple[str, List[Dict[str, Any]], str]:
-    if not tenant_id:
-        return "A tenant is required to retrieve knowledge safely.", [], "Tenant Guard"
-
+) -> str:
     authorization_error = _authorization_error(agent_name, user_role)
     if authorization_error:
-        return authorization_error, [], "Authorization Guard"
+        return authorization_error
 
     if not LANGGRAPH_AVAILABLE or StateGraph is None:
         agent = get_agent(agent_name)
-        response_text, sources, actual_name = agent.run(
+        return agent.run(
             query=query,
-            tenant_id=tenant_id,
-            user_role=user_role,
-            category_filter=category_filter,
             profile_context=profile_context,
         )
-        return response_text, sources, actual_name
 
     try:
         graph = StateGraph(AgentGraphState)
@@ -108,19 +82,13 @@ def run_agent_graph(
             {
                 "query": query,
                 "profile_context": profile_context or "",
-                "tenant_id": tenant_id,
                 "user_role": user_role,
-                "category_filter": category_filter,
                 "agent_name": agent_name,
             }
         )
-        return result.get("response", ""), result.get("sources", []), result.get("agent_label", agent_name)
+        return result.get("response", "")
     except (TypeError, ValueError, RuntimeError) as exc:
-        return (
-            f"LangGraph execution failed: {exc}",
-            [],
-            "Graph Error",
-        )
+        return f"LangGraph execution failed: {exc}"
 
 
 __all__ = ["run_agent_graph", "LANGGRAPH_AVAILABLE"]

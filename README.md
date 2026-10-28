@@ -1,72 +1,67 @@
-# ⚡ Ardhanarishwar AI
+# Ardhanarishwar AI
 
-> **Enterprise Multi-Agent Platform for Candidate Career Growth & HR Recruitment**
+Ardhanarishwar is a Streamlit AI job aggregator and career assistant. Candidate navigation is limited to **Dashboard**, **Find Jobs**, **My Applications**, and **My Profile**. Account, job-listing, and analytics administration is available separately to authorized administrators.
 
-🌐 **Live Deployment:** https://ardhanarishwar.streamlit.app/
+## Candidate features
 
-> **⚠️ Full Functionality / Testing Notice**
-> The live deployment provides access to the application, but some features may be limited in the hosted environment.
->
-> **For complete functionality and to test all AI agents, Ollama-powered features, RAG pipeline, and end-to-end workflows, please run the project locally.**
->
-> **Local Setup:**
-> Please follow the installation and setup instructions provided below to run the complete system locally and verify all features.
+- Search administrator-approved job listings by keyword and job type.
+- Admins refresh listings from Arbeitnow's public Job Board API (`https://www.arbeitnow.com/api/job-board-api`). The integration uses the API, not website scraping, and is isolated behind a source adapter.
+- External listings are hidden from candidates until an administrator approves them in **Job Management → External Listings**. Rejected and closed listings remain hidden; refreshes preserve the admin decision.
+- Normalize and deduplicate cached job records by source identity and URL.
+- Candidates apply on the employer's website, then optionally track the job and self-report their progress in **My Applications**. The app does not receive external applications or expose candidate application statuses to admins.
+- Interview practice accepts a resume and job description (PDF, DOCX, or TXT) and uses both to generate questions and evaluate answers. Uploaded files are not saved by the app.
+- Use the retained LangGraph career assistant, ATS resume analysis, resume-to-JD matching, skill-gap analysis, career counselling, learning roadmaps, and mock interview practice under **My Profile**.
 
-## 🤖 Specialist AI Agent Architecture
+Only the first API page is fetched per refresh. Availability, rate limits, job details, and apply workflows are controlled by the external provider and should be checked on the original listing.
 
-Ardhanarishwar uses a **LangGraph-powered Multi-Agent Router** that classifies intent and delegates requests to 5 specialized AI agents:
+## Architecture
 
-| Agent Name | Core Responsibility & Function |
-|---|---|
-| 🎤 **Interview Agent** | Technical & behavioral mock interviews, 3D answer evaluation (Accuracy, Relevance, Communication). |
-| 📝 **Resume Agent** | ATS compatibility scoring (0–100%), skill extraction, and CV-to-Job Description matching. |
-| 🎓 **Career Agent** | Competency gap analysis, personalized 30-day skill roadmaps, and career counselling. |
-| 💼 **Recruitment Agent** | AI JD requirement extraction, batch candidate resume ranking, and interview screening questions. |
-| 🏢 **Business Agent** | Executive business strategy, 13-week cash flow forecasting, and operational planning. |
-| 🤖 **General Assistant** | Casual career conversation and general domain assistance. |
+- **UI:** Streamlit
+- **Agent routing:** LangGraph `StateGraph` with Resume, Interview, Career, and General Assistant routes
+- **LLM:** Local Ollama
+- **Database:** SQLite; existing user records and legacy internal jobs/applications are retained
+- **Authentication:** Argon2id. Existing SHA-256 password hashes are verified and upgraded to Argon2id at the next successful login.
 
----
-
-## 🌟 Key Platform Capabilities
-
-### 🎓 Candidate Ecosystem
-- **ATS Resume Analyzer**: Instant ATS compatibility score (0-100%) and skill-gap recommendations.
-- **Interactive Mock Interviews**: AI interview practice with real-time scoring out of 100.
-- **Job Portal & Live HR Status**: Apply for jobs and track shortlisting status (`Shortlisted`, `Interview Scheduled`).
-
-### 💼 Business & HR Ecosystem
-- **JD Requirement Extractor**: Automatically extract required skills, experience, and responsibilities from JDs.
-- **Batch Candidate Leaderboard**: Rank multiple candidate resumes against job descriptions (`Strong Fit ≥80%`, `Moderate Fit`, `Weak Fit`).
-- **HR Candidate Shortlisting**: Shortlist top candidates with real-time notification alerts sent to candidate dashboards.
-
-### ⚡ Admin Command Center
-- **Enterprise RAG Knowledge Base**: Upload domain PDFs/DOCX files into **Qdrant Vector DB** for role-aware retrieval.
-- **Unanswered Queries Review**: Track and resolve candidate questions missing from the knowledge base.
-- **Platform Analytics**: Monitor active users, conversation history, and positive vs. negative feedback (👍/👎).
-
----
-
-## 🛠️ Technology Stack
-
-- **UI & Frontend**: Streamlit
-- **Agent Orchestration**: LangGraph `StateGraph` & AI Router
-- **Vector Search (RAG)**: Qdrant Vector DB + `all-MiniLM-L6-v2` Embeddings
-- **LLM Engine**: Local Ollama Inference (`llama3.2`) + Heuristic Fallback Engine
-- **Database**: SQLite (Multi-tenant schema with SHA-256 Auth)
-
----
-
-## 🔑 Demo Credentials
-
-- 🎓 **Candidate**: `candidate` / `cand123`
-- 💼 **Business**: `business` / `biz123`
-- ⚡ **Admin**: `admin` / `admin123`
-
----
-
-## 🚀 Quick Start (Local Setup)
+## Setup
 
 ```bash
 pip install -r requirements.txt
 python -m streamlit run app.py
+```
+
+The app applies additive SQLite schema updates at startup. SQLite foreign-key enforcement is enabled for every connection. No demo users or default administrator credentials are created.
+
+### Provision an administrator
+
+Create an administrator from the project directory in a trusted terminal. Enter the display name and a unique password when prompted; password input is hidden, and only its Argon2id hash is stored:
+
+```bash
+python -m database.create_admin AnkitJha
+```
+
+Choose any unused username in place of `AnkitJha`. The command asks for the admin's full name and a password of at least 12 characters. It creates a new Admin account; it does not change an existing account's password. Existing non-default administrator accounts remain available and their legacy password hashes are upgraded on successful authentication. The previously documented default password for the existing `admin` account has been revoked; reset that account locally before using the Admin UI. Existing Business accounts and data are retained, but Business workspaces are no longer available in the candidate-focused UI.
+
+Reset an existing administrator password from a trusted terminal. This prompts without echo, requires at least 12 characters, and stores only an Argon2id hash:
+
+```bash
+python -m database.reset_admin_password admin
+```
+
+Any previously shared or publicly documented administrator password should be revoked and reset before deployment.
+
+## Security and data handling
+
+- Candidate feedback is limited to candidate accounts; administrators can see aggregate feedback.
+- Job applications and saved listings are tied to the candidate account. Administrator application management checks the administrator role.
+- User deletion cascades through user-owned profiles, conversations/messages, interviews, resume analyses, feedback, jobs, and applications where applicable.
+- Legacy orphaned profile and feedback records are retained but detached from nonexistent user IDs during migration.
+- Interview practice extracts text from the candidate's uploaded resume and job description and sends that text to the configured Ollama model for the session. The app does not save those files or extracted text.
+- Existing knowledge-base metadata and Qdrant files from older versions are not automatically deleted, but the application no longer creates or reads them.
+
+## Tests
+
+Run the focused security and data-integrity suite:
+
+```bash
+python -m unittest discover -s tests -v
 ```

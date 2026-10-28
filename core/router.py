@@ -1,10 +1,9 @@
 from core.llm import llm_client
-from core.rag import rag_pipeline
 from core.memory import memory_manager
 from core.agentic import supervisor_agent
-from config import ROLE_CANDIDATE
-from database.models import record_unanswered_question
-from typing import Dict, Any, Tuple, List, Optional
+from config import ROLE_CANDIDATE, ROLE_ADMIN
+from database.models import user_matches_tenant
+from typing import Optional
 
 
 class AIOrchestrator:
@@ -45,31 +44,9 @@ AVAILABLE AGENTS:
 - Cloud, Databases, Git, APIs
 - Frontend, Backend, Web Development
 
-4. Recruitment Agent
-- Recruitment and hiring
-- Candidate screening
-- Talent acquisition
-- HR recruitment workflows
-- Candidate evaluation
-- Job description creation for hiring
-
-5. Business Agent
-- Business operations
-- Business processes
-- Workforce planning
-- Company operations
-- Budgeting
-- Organizational decisions
-- Business strategy
-
-6. General Assistant
+4. General Assistant
 - Casual conversation
-- Entertainment
-- Cooking
-- Weather
-- Politics
-- Unrelated general knowledge
-- Requests outside the career and professional domain
+- Requests outside the candidate career domain
 
 CLASSIFICATION RULES:
 
@@ -83,8 +60,6 @@ CLASSIFICATION RULES:
 - Interview-specific preparation belongs to Interview Agent.
 - Programming and technology questions belong to Career Agent unless
   they are specifically related to interview preparation.
-- Hiring, candidate screening, and HR tasks belong to Recruitment Agent.
-- Company-level operational or strategic questions belong to Business Agent.
 - Casual or unrelated questions belong to General Assistant.
 - If the intent is unclear, select General Assistant.
 - Never invent a new agent.
@@ -94,8 +69,6 @@ Return ONLY one of these exact values:
 Resume Agent
 Interview Agent
 Career Agent
-Recruitment Agent
-Business Agent
 General Assistant
 """
 
@@ -110,8 +83,6 @@ General Assistant
             "Resume Agent",
             "Interview Agent",
             "Career Agent",
-            "Recruitment Agent",
-            "Business Agent",
             "General Assistant"
         }
 
@@ -137,10 +108,6 @@ General Assistant
             return "Interview Agent"
         if any(k in q_lower for k in ["resume", "resumes", "cv", "ats", "bullet point", "portfolio"]):
             return "Resume Agent"
-        if any(k in q_lower for k in ["recruitment", "recruit", "hiring", "hire", "talent", "candidate", "screening", "screen"]):
-            return "Recruitment Agent"
-        if any(k in q_lower for k in ["business", "strategy", "operations", "operation", "budget", "finance", "revenue"]):
-            return "Business Agent"
         if any(k in q_lower for k in ["career", "roadmap", "learning", "skill", "skills", "job", "java", "python", "coding", "software engineer", "developer", "learn", "growth", "education"]):
             return "Career Agent"
 
@@ -151,62 +118,41 @@ General Assistant
         query: str,
         user_id: int,
         conversation_id: Optional[int] = None,
-        category_filter: Optional[str] = None,
         tenant_id: Optional[str] = None,
         user_role: Optional[str] = None
-    ) -> Tuple[str, List[Dict[str, Any]], str]:
+    ) -> str:
+        if not tenant_id:
+            return "A tenant is required to process this request safely."
+        if user_role not in (ROLE_CANDIDATE, ROLE_ADMIN) or not user_matches_tenant(
+            user_id, tenant_id, user_role
+        ):
+            return "The authenticated account does not match the requested tenant."
 
         agent_name = self.detect_intent(query)
-
-        if not tenant_id:
-            return (
-                "A tenant is required to process this request safely.",
-                [],
-                "Tenant Guard"
-            )
 
         if user_role == ROLE_CANDIDATE and agent_name == "General Assistant":
             return (
                 "I can only help with career-related questions, such as resumes, "
-                "skills, learning paths, interviews, and job searches.",
-                [],
-                "Career Guard"
+                "skills, learning paths, interviews, and job searches."
             )
 
         profile_context = memory_manager.get_user_profile_context(user_id)
 
-        response_text, sources = supervisor_agent.run(
+        response_text = supervisor_agent.run(
             query=query,
             profile_context=profile_context,
-            tenant_id=tenant_id,
             agent_name=agent_name,
-            category_filter=category_filter,
             user_role=user_role,
         )
-
-        if user_role == ROLE_CANDIDATE and not sources:
-            record_unanswered_question(
-                user_id,
-                tenant_id or "",
-                query
-            )
-
-        if user_role == ROLE_CANDIDATE and not sources and not (response_text and response_text.strip()):
-            response_text = (
-                "This information is currently unavailable in our knowledge base. "
-                "Your question has been sent to the admin for review. "
-                "Please try again after 24 hours."
-            )
 
         if conversation_id:
             memory_manager.save_chat_turn(
                 conversation_id,
                 query,
-                response_text,
-                sources
+                response_text
             )
 
-        return response_text, sources, agent_name
+        return response_text
 
 
 ai_orchestrator = AIOrchestrator()

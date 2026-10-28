@@ -1,28 +1,59 @@
-import json
+import sqlite3
 from database.database import get_connection, hash_password
+from database.database import verify_password
 from typing import List, Dict, Optional, Any
+
+def _account_has_role(conn, current_user: Optional[Dict[str, Any]], role: str) -> bool:
+    if not current_user or current_user.get("role") != role or not current_user.get("id"):
+        return False
+    cursor = conn.execute("SELECT role, tenant_id FROM users WHERE id = ?;", (current_user["id"],))
+    account = cursor.fetchone()
+    return bool(
+        account
+        and account["role"] == role
+        and account["tenant_id"] == current_user.get("tenant_id")
+    )
+
+def user_matches_tenant(user_id: int, tenant_id: str, role: str) -> bool:
+    """Verify that a database account's role and tenant match the request context."""
+    conn = get_connection()
+    account = conn.execute(
+        "SELECT role, tenant_id FROM users WHERE id = ?;",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+    return bool(account and account["role"] == role and account["tenant_id"] == tenant_id)
 
 def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     """Authenticate user with username and password."""
     conn = get_connection()
     cursor = conn.cursor()
-    pwd_hash = hash_password(password)
-    cursor.execute("SELECT * FROM users WHERE username = ? AND password_hash = ?;", (username, pwd_hash))
+    cursor.execute("SELECT * FROM users WHERE username = ?;", (username,))
     user = cursor.fetchone()
+    if user and verify_password(password, user["password_hash"]):
+        if not user["password_hash"].startswith("$argon2id$"):
+            cursor.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?;",
+                (hash_password(password), user["id"])
+            )
+            conn.commit()
+        authenticated_user = dict(user)
+        authenticated_user.pop("password_hash", None)
+    else:
+        authenticated_user = None
     conn.close()
-    if user:
-        return dict(user)
-    return None
+    return authenticated_user
 
 def change_password(user_id: int, current_password: str, new_password: str) -> bool:
     """Change a user's password after verifying the current password."""
+    if len(new_password) < 8:
+        return False
+
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT 1 FROM users WHERE id = ? AND password_hash = ?;",
-        (user_id, hash_password(current_password))
-    )
-    if not cursor.fetchone():
+    cursor.execute("SELECT password_hash FROM users WHERE id = ?;", (user_id,))
+    user = cursor.fetchone()
+    if not user or not verify_password(current_password, user["password_hash"]):
         conn.close()
         return False
 
@@ -37,6 +68,9 @@ def change_password(user_id: int, current_password: str, new_password: str) -> b
 
 def create_user(username: str, password: str, role: str, tenant_id: str, email: str = "", full_name: str = "") -> Optional[int]:
     """Register a new user in the database."""
+    if role != "Candidate" or not username.strip() or len(password) < 8 or not tenant_id.strip():
+        return None
+
     conn = get_connection()
     cursor = conn.cursor()
     pwd_hash = hash_password(password)
@@ -49,14 +83,16 @@ def create_user(username: str, password: str, role: str, tenant_id: str, email: 
         conn.commit()
         conn.close()
         return user_id
-    except Exception as e:
+    except sqlite3.IntegrityError:
         conn.close()
-        print(f"Error creating user: {e}")
         return None
 
-def get_all_users() -> List[Dict[str, Any]]:
+def get_all_users(current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Retrieve all registered users for Admin panel."""
     conn = get_connection()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        raise PermissionError("Only administrators can list user accounts.")
     cursor = conn.cursor()
     cursor.execute("SELECT id, username, role, tenant_id, email, full_name, created_at FROM users ORDER BY id DESC;")
     rows = cursor.fetchall()
@@ -70,6 +106,9 @@ def delete_user(current_user: Optional[Dict[str, Any]], user_id: int) -> bool:
 
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        return False
     cursor.execute("DELETE FROM users WHERE id = ?;", (user_id,))
     deleted = cursor.rowcount > 0
     conn.commit()
@@ -133,12 +172,14 @@ def get_user_conversations(user_id: int) -> List[Dict[str, Any]]:
     conn.close()
     return [dict(r) for r in rows]
 
-def save_message(conversation_id: int, sender: str, content: str, sources: Optional[List[Dict[str, Any]]] = None):
+def save_message(conversation_id: int, sender: str, content: str):
     """Save user or assistant chat message."""
     conn = get_connection()
     cursor = conn.cursor()
-    sources_json = json.dumps(sources) if sources else ""
-    cursor.execute("INSERT INTO messages (conversation_id, sender, content, sources) VALUES (?, ?, ?, ?);", (conversation_id, sender, content, sources_json))
+    cursor.execute(
+        "INSERT INTO messages (conversation_id, sender, content) VALUES (?, ?, ?);",
+        (conversation_id, sender, content)
+    )
     conn.commit()
     conn.close()
 
@@ -146,90 +187,14 @@ def get_conversation_messages(conversation_id: int) -> List[Dict[str, Any]]:
     """Retrieve full message history for a conversation."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM messages WHERE conversation_id = ? ORDER BY id ASC;", (conversation_id,))
+    cursor.execute(
+        "SELECT id, conversation_id, sender, content, created_at "
+        "FROM messages WHERE conversation_id = ? ORDER BY id ASC;",
+        (conversation_id,)
+    )
     rows = cursor.fetchall()
     conn.close()
-    messages = []
-    for r in rows:
-        d = dict(r)
-        d['sources'] = json.loads(d['sources']) if d.get('sources') else []
-        messages.append(d)
-    return messages
-
-def register_document(doc_id: str, document_name: str, category: str, source: str, tenant_id: str, uploaded_by: int, chunk_count: int):
-    """Save uploaded document metadata in SQLite."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO documents (id, document_name, category, source, tenant_id, uploaded_by, chunk_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
-    """, (doc_id, document_name, category, source, tenant_id, uploaded_by, chunk_count))
-    conn.commit()
-    conn.close()
-
-def get_document_by_id(doc_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch a single document record by document id."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM documents WHERE id = ?;", (doc_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def can_delete_document(user: Optional[Dict[str, Any]], document: Optional[Dict[str, Any]]) -> bool:
-    """Return whether the current user is allowed to delete the document."""
-    if not user or not document:
-        return False
-
-    role = user.get("role")
-    user_id = user.get("id")
-    tenant_id = user.get("tenant_id")
-
-    if role == "Admin":
-        return True
-
-    if role == "Candidate":
-        return (
-            document.get("tenant_id") == tenant_id and
-            document.get("uploaded_by") == user_id
-        )
-
-    if role == "Business":
-        return (
-            document.get("tenant_id") == tenant_id or
-            (
-                document.get("tenant_id") == "tenant_global" and
-                document.get("uploaded_by") == user_id
-            )
-        )
-
-    return False
-
-def get_all_documents(current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """Retrieve knowledge-base documents visible to the current user."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    if current_user and current_user.get("role") == "Admin":
-        cursor.execute("SELECT * FROM documents ORDER BY uploaded_at DESC;")
-    elif current_user and current_user.get("tenant_id"):
-        cursor.execute(
-            "SELECT * FROM documents WHERE tenant_id IN (?, 'tenant_global') ORDER BY uploaded_at DESC;",
-            (current_user["tenant_id"],)
-        )
-    else:
-        conn.close()
-        return []
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def delete_document_record(doc_id: str):
-    """Delete document metadata record by ID."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM documents WHERE id = ?;", (doc_id,))
-    conn.commit()
-    conn.close()
+    return [dict(row) for row in rows]
 
 def save_mock_interview(user_id: int, job_role: str, experience_level: str, difficulty: str, interview_type: str, score_overall: float, score_technical: float, score_communication: float, summary_feedback: str):
     """Store finished mock interview summary."""
@@ -262,20 +227,35 @@ def save_resume_analysis(user_id: int, resume_name: str, ats_score: float, targe
     conn.commit()
     conn.close()
 
-def record_feedback(user_id: int, question: str, response: str, rating: int, sources: str = "", comments: str = ""):
-    """Save user response rating (+1 or -1)."""
+def record_feedback(
+    current_user: Dict[str, Any],
+    question: str,
+    response: str,
+    rating: int,
+    comments: str = "",
+) -> bool:
+    """Save feedback submitted by the owning candidate account."""
+    if rating not in (-1, 1):
+        return False
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Candidate"):
+        conn.close()
+        return False
     cursor.execute("""
-    INSERT INTO feedback (user_id, question, response, rating, sources, comments)
-    VALUES (?, ?, ?, ?, ?, ?);
-    """, (user_id, question, response, rating, sources, comments))
+    INSERT INTO feedback (user_id, question, response, rating, comments)
+    VALUES (?, ?, ?, ?, ?);
+    """, (current_user["id"], question, response, rating, comments))
     conn.commit()
     conn.close()
+    return True
 
-def get_feedback_stats() -> Dict[str, Any]:
+def get_feedback_stats(current_user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Calculate positive vs negative feedback percentages for Admin dashboard."""
     conn = get_connection()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        raise PermissionError("Only administrators can view feedback records.")
     cursor = conn.cursor()
     cursor.execute("SELECT rating, COUNT(*) as cnt FROM feedback GROUP BY rating;")
     rows = cursor.fetchall()
@@ -300,64 +280,8 @@ def get_feedback_stats() -> Dict[str, Any]:
         "recent_feedback": recent
     }
 
-def record_unanswered_question(user_id: int, tenant_id: str, question: str):
-    """Record a candidate question that had no relevant RAG information."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO unanswered_questions (user_id, tenant_id, question) VALUES (?, ?, ?);",
-        (user_id, tenant_id, question.strip())
-    )
-    conn.commit()
-    conn.close()
-
-def get_unanswered_questions(status: str = "Pending") -> List[Dict[str, Any]]:
-    """Retrieve unanswered candidate questions for the Admin dashboard."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    SELECT q.id, q.question, q.status, q.created_at,
-           u.full_name, u.username, u.email, q.tenant_id
-    FROM unanswered_questions q
-    JOIN users u ON u.id = q.user_id
-    WHERE q.status = ?
-    ORDER BY q.created_at DESC;
-    """, (status,))
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
-
-def mark_unanswered_question_resolved(question_id: int) -> bool:
-    """Mark an Admin-reviewed unanswered question as resolved."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE unanswered_questions SET status = 'Resolved' WHERE id = ?;",
-        (question_id,)
-    )
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return updated
-
-def create_job(business_id: int, tenant_id: str, company_name: str, title: str, description: str,
-               required_skills: str, experience: str, salary: str, location: str, job_type: str) -> int:
-    """Create a job posting awaiting Admin approval."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO jobs (business_id, tenant_id, company_name, title, description,
-                      required_skills, experience, salary, location, job_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-    """, (business_id, tenant_id, company_name, title, description, required_skills,
-          experience, salary, location, job_type))
-    job_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return job_id
-
-def get_jobs(status: Optional[str] = None, business_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Retrieve jobs with optional status and owner filters."""
+def get_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve legacy job posts with an optional status filter."""
     conn = get_connection()
     cursor = conn.cursor()
     query = "SELECT * FROM jobs WHERE 1 = 1"
@@ -365,19 +289,19 @@ def get_jobs(status: Optional[str] = None, business_id: Optional[int] = None) ->
     if status:
         query += " AND status = ?"
         params.append(status)
-    if business_id:
-        query += " AND business_id = ?"
-        params.append(business_id)
     query += " ORDER BY created_at DESC;"
     cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
-def update_job_status(job_id: int, status: str, admin_note: str = "") -> bool:
+def update_job_status(current_user: Dict[str, Any], job_id: int, status: str, admin_note: str = "") -> bool:
     """Approve, reject, close, or archive a job posting."""
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        return False
     cursor.execute("""
     UPDATE jobs SET status = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
     """, (status, admin_note, job_id))
@@ -386,18 +310,27 @@ def update_job_status(job_id: int, status: str, admin_note: str = "") -> bool:
     conn.close()
     return updated
 
-def apply_to_job(job_id: int, candidate_id: int, resume_name: str, cover_message: str, resume_path: str = "") -> bool:
+def apply_to_job(job_id: int, current_user: Dict[str, Any], resume_name: str, cover_message: str, resume_path: str = "") -> bool:
     """Submit one application per candidate for an approved job."""
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Candidate"):
+        conn.close()
+        return False
+    if not cursor.execute(
+        "SELECT 1 FROM jobs WHERE id = ? AND status = 'Approved';",
+        (job_id,)
+    ).fetchone():
+        conn.close()
+        return False
     try:
         cursor.execute("""
         INSERT INTO job_applications (job_id, candidate_id, resume_name, resume_path, cover_message)
         VALUES (?, ?, ?, ?, ?);
-        """, (job_id, candidate_id, resume_name, resume_path, cover_message))
+        """, (job_id, current_user["id"], resume_name, resume_path, cover_message))
         conn.commit()
         return True
-    except Exception:
+    except sqlite3.IntegrityError:
         return False
     finally:
         conn.close()
@@ -411,23 +344,29 @@ def has_applied(job_id: int, candidate_id: int) -> bool:
     conn.close()
     return applied
 
-def get_candidate_applications(candidate_id: int) -> List[Dict[str, Any]]:
+def get_candidate_applications(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Retrieve a candidate's submitted applications."""
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Candidate"):
+        conn.close()
+        return []
     cursor.execute("""
     SELECT a.*, j.company_name, j.title, j.location
     FROM job_applications a JOIN jobs j ON j.id = a.job_id
     WHERE a.candidate_id = ? ORDER BY a.applied_at DESC;
-    """, (candidate_id,))
+    """, (current_user["id"],))
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
-def get_job_applications(business_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Retrieve applications for Admin or an owning Business account."""
+def get_job_applications(current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Retrieve all candidate applications for an authenticated administrator."""
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        raise PermissionError("Only administrators can view all applications.")
     query = """
     SELECT a.*, j.company_name, j.title, j.business_id, j.tenant_id,
            u.full_name, u.email, u.username
@@ -435,20 +374,19 @@ def get_job_applications(business_id: Optional[int] = None) -> List[Dict[str, An
     JOIN jobs j ON j.id = a.job_id
     JOIN users u ON u.id = a.candidate_id
     """
-    params = []
-    if business_id:
-        query += " WHERE j.business_id = ?"
-        params.append(business_id)
     query += " ORDER BY a.applied_at DESC;"
-    cursor.execute(query, params)
+    cursor.execute(query)
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
-def update_application_status(application_id: int, status: str) -> bool:
+def update_application_status(current_user: Optional[Dict[str, Any]], application_id: int, status: str) -> bool:
     """Update candidate application status (e.g. Shortlisted, Interview Scheduled, Rejected)."""
     conn = get_connection()
     cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        return False
     cursor.execute("""
     UPDATE job_applications SET status = ? WHERE id = ?;
     """, (status, application_id))
@@ -457,9 +395,12 @@ def update_application_status(application_id: int, status: str) -> bool:
     conn.close()
     return updated
 
-def get_system_metrics() -> Dict[str, Any]:
+def get_system_metrics(current_user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Retrieve high-level metrics for Admin Dashboard."""
     conn = get_connection()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        raise PermissionError("Only administrators can view platform metrics.")
     cursor = conn.cursor()
 
     cursor.execute("SELECT COUNT(*) FROM users;")
@@ -467,9 +408,6 @@ def get_system_metrics() -> Dict[str, Any]:
 
     cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'Candidate';")
     total_candidates = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'Business';")
-    total_businesses = cursor.fetchone()[0]
 
     cursor.execute("SELECT COUNT(*) FROM messages;")
     total_messages = cursor.fetchone()[0]
@@ -480,27 +418,39 @@ def get_system_metrics() -> Dict[str, Any]:
     cursor.execute("SELECT COUNT(*) FROM mock_interviews;")
     total_interviews = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM documents;")
-    total_documents = cursor.fetchone()[0]
-
     conn.close()
 
     return {
         "total_users": total_users,
         "candidates": total_candidates,
-        "businesses": total_businesses,
         "conversations": total_messages,
         "resume_analyses": total_resume_analyses,
-        "mock_interviews": total_interviews,
-        "documents": total_documents
+        "mock_interviews": total_interviews
     }
 
-def get_dashboard_metrics(user_id: int, role: str, tenant_id: str) -> Dict[str, Any]:
+def get_dashboard_metrics(
+    user_id: int,
+    role: str,
+    tenant_id: str,
+    current_user: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """Retrieve metrics scoped to the current role, except for the Admin view."""
-    if role == "Admin":
-        return get_system_metrics()
-
     conn = get_connection()
+    if role not in ("Candidate", "Admin"):
+        conn.close()
+        raise PermissionError("Candidate metrics are not available to this account.")
+    if (
+        not current_user
+        or current_user.get("id") != user_id
+        or current_user.get("tenant_id") != tenant_id
+        or not _account_has_role(conn, current_user, role)
+    ):
+        conn.close()
+        raise PermissionError("Metrics are available only to the authenticated account.")
+    if role == "Admin":
+        conn.close()
+        return get_system_metrics(current_user)
+
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM conversations WHERE user_id = ?;", (user_id,))
     conversations = cursor.fetchone()[0]
@@ -508,28 +458,203 @@ def get_dashboard_metrics(user_id: int, role: str, tenant_id: str) -> Dict[str, 
     resume_analyses = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM mock_interviews WHERE user_id = ?;", (user_id,))
     mock_interviews = cursor.fetchone()[0]
-    cursor.execute(
-        "SELECT COUNT(*) FROM documents WHERE tenant_id = ? OR tenant_id = 'tenant_global';",
-        (tenant_id,)
-    )
-    documents = cursor.fetchone()[0]
-
-    if role == "Candidate":
-        cursor.execute("SELECT COUNT(*) FROM candidate_profiles WHERE user_id = ?;", (user_id,))
-        candidates = cursor.fetchone()[0]
-        businesses = 0
-    else:
-        cursor.execute("SELECT COUNT(*) FROM users WHERE tenant_id = ?;", (tenant_id,))
-        candidates = 0
-        businesses = cursor.fetchone()[0]
-
     conn.close()
     return {
-        "total_users": 1 if role == "Candidate" else businesses,
-        "candidates": candidates,
-        "businesses": businesses if role == "Business" else 0,
         "conversations": conversations,
         "resume_analyses": resume_analyses,
         "mock_interviews": mock_interviews,
-        "documents": documents
     }
+
+def upsert_aggregated_jobs(jobs: List[Dict[str, Any]]) -> int:
+    """Insert or refresh listings without overwriting their moderation decisions."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.executemany("""
+    INSERT INTO aggregated_jobs (
+        source, source_id, company_name, title, description, required_skills,
+        experience, salary, location, job_type, job_url, remote, posted_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT DO UPDATE SET
+        company_name = excluded.company_name,
+        title = excluded.title,
+        description = excluded.description,
+        required_skills = excluded.required_skills,
+        experience = excluded.experience,
+        salary = excluded.salary,
+        location = excluded.location,
+        job_type = excluded.job_type,
+        job_url = excluded.job_url,
+        remote = excluded.remote,
+        posted_at = excluded.posted_at,
+        updated_at = CURRENT_TIMESTAMP;
+    """, [
+        (
+            job["source"], job["source_id"], job["company_name"], job["title"],
+            job["description"], job.get("required_skills", ""), job.get("experience", ""),
+            job.get("salary", ""), job.get("location", ""), job.get("job_type", ""),
+            job["job_url"], int(bool(job.get("remote"))), job.get("posted_at", "")
+        )
+        for job in jobs
+    ])
+    conn.commit()
+    updated = cursor.rowcount
+    conn.close()
+    return updated
+
+def search_aggregated_jobs(
+    role: str = "",
+    location: str = "",
+    skills: str = "",
+    experience: str = "",
+    job_type: str = "",
+    query: str = "",
+) -> List[Dict[str, Any]]:
+    """Search cached listings using validated, parameterized candidate filters."""
+    conn = get_connection()
+    conditions = []
+    params = []
+    if query.strip():
+        searchable_columns = ("title", "company_name", "required_skills", "description", "location", "source")
+        conditions.append("(" + " OR ".join(f"lower({column}) LIKE ?" for column in searchable_columns) + ")")
+        params.extend([f"%{query.strip().lower()}%"] * len(searchable_columns))
+    for column, value in (
+        ("title", role),
+        ("location", location),
+        ("experience", experience),
+    ):
+        if value.strip():
+            conditions.append(f"lower({column}) LIKE ?")
+            params.append(f"%{value.strip().lower()}%")
+    skill_filters = [skill.strip() for skill in skills.split(",") if skill.strip()]
+    for skill in skill_filters:
+        conditions.append("lower(required_skills) LIKE ?")
+        params.append(f"%{skill.lower()}%")
+    if job_type.strip().lower() == "remote":
+        conditions.append("(remote = 1 OR lower(job_type) LIKE ?)")
+        params.append("%remote%")
+    elif job_type.strip():
+        conditions.append("lower(job_type) LIKE ?")
+        params.append(f"%{job_type.strip().lower()}%")
+    conditions.append("review_status = 'Approved'")
+    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = conn.execute(
+        f"SELECT * FROM aggregated_jobs{where_clause} ORDER BY posted_at DESC, id DESC LIMIT 200;",
+        params
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def save_aggregated_job(current_user: Dict[str, Any], job_id: int) -> bool:
+    """Save an approved listing for the owning candidate and add it to tracking."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Candidate"):
+        conn.close()
+        return False
+    if not cursor.execute(
+        "SELECT 1 FROM aggregated_jobs WHERE id = ? AND review_status = 'Approved';",
+        (job_id,)
+    ).fetchone():
+        conn.close()
+        return False
+    cursor.execute(
+        "INSERT OR IGNORE INTO saved_jobs (candidate_id, job_id) VALUES (?, ?);",
+        (current_user["id"], job_id)
+    )
+    cursor.execute(
+        "INSERT OR IGNORE INTO tracked_applications (candidate_id, job_id) VALUES (?, ?);",
+        (current_user["id"], job_id)
+    )
+    saved = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return saved
+
+def get_aggregated_jobs_for_review(current_user: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Retrieve external listings for an authenticated administrator to review."""
+    conn = get_connection()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        raise PermissionError("Only administrators can review external job listings.")
+    rows = conn.execute("""
+    SELECT * FROM aggregated_jobs
+    ORDER BY CASE review_status
+        WHEN 'Pending Review' THEN 0
+        WHEN 'Approved' THEN 1
+        WHEN 'Rejected' THEN 2
+        WHEN 'Closed' THEN 3
+        ELSE 4
+    END, updated_at DESC, id DESC;
+    """).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def update_aggregated_job_status(
+    current_user: Optional[Dict[str, Any]],
+    job_id: int,
+    status: str,
+    admin_note: str = "",
+) -> bool:
+    """Update an external listing's moderation status as an authenticated admin."""
+    allowed_statuses = {"Pending Review", "Approved", "Rejected", "Closed"}
+    if status not in allowed_statuses:
+        return False
+    conn = get_connection()
+    if not _account_has_role(conn, current_user, "Admin"):
+        conn.close()
+        return False
+    cursor = conn.execute("""
+    UPDATE aggregated_jobs
+    SET review_status = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?;
+    """, (status, admin_note, job_id))
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+def get_tracked_applications(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """List only the authenticated candidate's saved external jobs and status."""
+    conn = get_connection()
+    if not _account_has_role(conn, current_user, "Candidate"):
+        conn.close()
+        return []
+    rows = conn.execute("""
+    SELECT t.id, t.status, t.applied_at, t.updated_at,
+           j.id AS job_id, j.source, j.company_name, j.title, j.location,
+           j.job_type, j.job_url, j.posted_at
+    FROM tracked_applications t
+    JOIN aggregated_jobs j ON j.id = t.job_id
+    WHERE t.candidate_id = ? AND j.review_status = 'Approved'
+    ORDER BY t.updated_at DESC;
+    """, (current_user.get("id"),)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def update_tracked_application(current_user: Dict[str, Any], job_id: int, status: str) -> bool:
+    """Update an external job's application status for its owning candidate only."""
+    allowed_statuses = {"Saved", "Applied", "Interview", "Offer", "Rejected", "Closed"}
+    if status not in allowed_statuses:
+        return False
+    conn = get_connection()
+    cursor = conn.cursor()
+    if not _account_has_role(conn, current_user, "Candidate"):
+        conn.close()
+        return False
+    if status == "Applied":
+        cursor.execute("""
+        UPDATE tracked_applications
+        SET status = ?, applied_at = COALESCE(applied_at, CURRENT_TIMESTAMP),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE candidate_id = ? AND job_id = ?;
+        """, (status, current_user.get("id"), job_id))
+    else:
+        cursor.execute("""
+        UPDATE tracked_applications
+        SET status = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE candidate_id = ? AND job_id = ?;
+        """, (status, current_user.get("id"), job_id))
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated

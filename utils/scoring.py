@@ -82,7 +82,7 @@ def match_resume_to_jd(resume_skills: List[str], resume_text: str, jd_text: str)
     COMMON_TECH_TERMS = [
         "python", "java", "c++", "javascript", "typescript", "react", "node.js", "express", "fastapi",
         "django", "flask", "sql", "postgresql", "mongodb", "docker", "kubernetes", "aws", "azure", "gcp",
-        "machine learning", "deep learning", "nlp", "llm", "rag", "qdrant", "vector db", "git", "ci/cd",
+        "machine learning", "deep learning", "nlp", "llm", "git", "ci/cd",
         "rest api", "graphql", "microservices", "system design", "agile", "spark", "hadoop", "tableau"
     ]
 
@@ -137,7 +137,7 @@ def analyze_skill_gap(current_skills: List[str], target_role: str) -> Dict[str, 
     Generate skill gap breakdown and structured learning recommendations.
     """
     ROLE_REQUIREMENTS = {
-        "AI Engineer": ["Python", "PyTorch/TensorFlow", "RAG", "Ollama/LLMs", "Vector DB (Qdrant)", "FastAPI", "Docker", "Cloud (AWS/GCP)", "System Design"],
+        "AI Engineer": ["Python", "PyTorch/TensorFlow", "Machine Learning", "Ollama/LLMs", "FastAPI", "Docker", "Cloud (AWS/GCP)", "System Design"],
         "ML Engineer": ["Python", "Scikit-Learn", "Feature Engineering", "MLOps", "Docker", "SQL", "Pandas/NumPy", "Deep Learning"],
         "Python Developer": ["Python", "FastAPI/Django", "PostgreSQL/SQLite", "Git", "REST APIs", "Unit Testing", "Docker"],
         "Data Scientist": ["Python", "R", "SQL", "Pandas", "Data Visualization", "Statistics", "Machine Learning", "A/B Testing"],
